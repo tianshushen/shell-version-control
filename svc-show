@@ -1,0 +1,48 @@
+#!/usr/bin/env dash
+#
+# svc-show
+# Author: Shen, Tianshu
+#
+# Prints content of the specified filename as of the specified commit
+# Or content of the file in the index
+
+if ! test -d .svc; then
+    echo "$0: error: svc repository directory .svc not found" >&2
+    exit 1
+fi
+
+if test "$#" -ne 1 || ! echo "$1" | grep -Eq '^[0-9]*:.+$'; then
+    echo "usage: $0 <commit>:<filename>" >&2
+    exit 1
+fi
+
+c=$(echo "$1" | sed 's/\([0-9]*\):.*/\1/')
+f=$(echo "$1" | sed 's/[0-9]*:\(.*\)/\1/')
+
+if ! echo "$f" | grep -Eq '^[a-zA-Z0-9][a-zA-Z0-9._-]*$'; then
+    echo "$0: error: invalid filename '$f'" >&2
+    exit 1
+fi
+
+if test -z "$c"; then  # go to .svc/stag/ cat that file
+    if ! test -f ".svc/stag/$f"; then
+        echo "$0: error: '$f' not found in index" >&2
+        exit 1
+    fi
+    cat ".svc/stag/$f"
+    exit 0
+fi
+
+read i < .svc/index
+
+if test "$c" -ge "$i"; then
+    echo "$0: error: unknown commit '$c'" >&2
+    exit 1
+fi
+
+if ! test -f ".svc/repo/$c/$f"; then
+    echo "$0: error: '$f' not found in commit $c" >&2
+    exit 1
+fi
+
+cat ".svc/repo/$c/$f"

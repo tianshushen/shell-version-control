@@ -1,0 +1,65 @@
+#!/usr/bin/env dash
+#
+# svc-branch
+# Author: Shen, Tianshu
+#
+# List name of branch
+# Create or delete branch
+
+if ! test -d .svc; then
+    echo "$0: error: svc repository directory .svc not found" >&2
+    exit 1
+fi
+
+read cur < .svc/current
+read cur_head < ".svc/branch/$cur"
+if test "$cur_head" -eq -1; then
+    echo "$0: error: this command can not be run until after the first commit" >&2
+    exit 1
+fi
+
+# no argument: list all branch
+if test "$#" -eq 0; then
+    ls .svc/branch | sort
+    exit 0
+fi
+
+if test "$1" = '-d'; then
+    mode_delete='True'
+    shift
+else
+    mode_delete='False'
+fi
+
+if test "$#" -ne 1 || echo "$1" | grep -Eq '^-.*$'; then
+    echo "usage: $0 [-d] <branch>" >&2
+    exit 1
+elif ! echo "$1" | grep -Eq '^[a-zA-Z0-9][a-zA-Z0-9_-]*$'; then
+    echo "$0: error: invalid branch name '$1'" >&2
+    exit 1
+fi
+
+if test "${mode_delete}" = 'True'; then
+    if test "$1" = 'master'; then
+        echo "$0: error: can not delete branch 'master': default branch" >&2
+        exit 1
+    fi
+    if ! test -f ".svc/branch/$1"; then
+        echo "$0: error: branch '$1' doesn't exist" >&2
+        exit 1
+    fi
+    read targ_head < ".svc/branch/$1"
+    # merged means the branch head is an ancestor of current head
+    if ! grep -qx "${targ_head}" ".svc/repo/${cur_head}.hist"; then
+        echo "$0: error: branch '$1' has unmerged changes" >&2
+        exit 1
+    fi
+    rm ".svc/branch/$1"
+    echo "Deleted branch '$1'"
+else
+    if test -f ".svc/branch/$1"; then
+        echo "$0: error: branch '$1' already exists" >&2
+        exit 1
+    fi
+    echo "${cur_head}" > ".svc/branch/$1"
+fi

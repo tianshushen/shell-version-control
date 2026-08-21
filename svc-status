@@ -1,0 +1,108 @@
+#!/usr/bin/env dash
+#
+# svc-status
+# Author: Shen, Tianshu
+#
+# Show the status in current directory
+# In the index and the repository
+
+if ! test -d .svc; then
+    echo "$0: error: svc repository directory .svc not found" >&2
+    exit 1
+fi
+
+if test "$#" -ne 0; then
+    echo "usage: $0" >&2
+    exit 1
+fi
+
+read b < .svc/current
+read head < ".svc/branch/$b"
+
+all_file=$(
+    {
+        ls -p . 2>/dev/null | grep -v '/$'
+        ls .svc/stag 2>/dev/null
+        test "$head" -ge 0 && ls ".svc/repo/$head" 2>/dev/null
+    } | sort -u
+)
+
+# repo / index / work
+# work vs index / index vs repo
+# no need for work vs repo because of Transitivity
+# each combination correspond to a situation
+for f in ${all_file}; do
+    if test -f "$f"; then
+        exist_work='True'
+    else
+        exist_work='False'
+    fi
+    if test -f ".svc/stag/$f"; then
+        exist_stag='True'
+    else
+        exist_stag='False'
+    fi
+    if test "${head}" -ge 0 && test -f ".svc/repo/$head/$f"; then
+        exist_repo='True'
+    else
+        exist_repo='False'
+    fi
+
+    # repo -> index -> work order
+    if test "${exist_repo}" = 'True'; then
+        if test "${exist_stag}" = 'True'; then
+            if test "${exist_work}" = 'True'; then
+                if diff "$f" ".svc/stag/$f" > /dev/null 2>&1; then
+                    work_eq_stag='True'
+                else
+                    work_eq_stag='False'
+                fi
+                if diff ".svc/stag/$f" ".svc/repo/$head/$f" > /dev/null 2>&1; then
+                    stag_eq_repo='True'
+                else
+                    stag_eq_repo='False'
+                fi
+
+                if test "${work_eq_stag}" = 'True' && test "${stag_eq_repo}" = 'True'; then
+                    echo "$f - same as repo"
+                elif test "${work_eq_stag}" = 'True' && test "${stag_eq_repo}" = 'False'; then
+                    echo "$f - file changed, changes staged for commit"
+                elif test "${work_eq_stag}" = 'False' && test "${stag_eq_repo}" = 'True'; then
+                    echo "$f - file changed, changes not staged for commit"
+                else  # test "${work_eq_stag}" = 'False' && test "${stag_eq_repo}" = 'False'
+                    echo "$f - file changed, different changes staged for commit"
+                fi
+            else  # test "${exist_work}" = 'False'
+                if diff ".svc/stag/$f" ".svc/repo/$head/$f" > /dev/null 2>&1; then
+                    # stag_eq_repo='True'
+                    echo "$f - file deleted"
+                else
+                    # stag_eq_repo='False'
+                    echo "$f - file deleted, changes staged for commit"
+                fi
+            fi
+        else  # test "${exist_stag}" = 'False'
+            if test "${exist_work}" = 'True'; then
+                echo "$f - deleted from index"
+            else  # test "${exist_work}" = 'False'
+                echo "$f - file deleted, deleted from index"
+            fi
+        fi
+    else  # test "${exist_repo}" = 'False'
+        if test "${exist_stag}" = 'True'; then
+            if test "${exist_work}" = 'True'; then
+                if diff "$f" ".svc/stag/$f" > /dev/null 2>&1; then
+                    # work_eq_stag='True'
+                    echo "$f - added to index"
+                else
+                    # work_eq_stag='False'
+                    echo "$f - added to index, file changed"
+                fi
+            else  # test "${exist_work}" = 'False'
+                echo "$f - added to index, file deleted"
+            fi
+        else  # test "${exist_stag}" = 'False'
+            echo "$f - untracked"  # cannot 3 all false
+        fi
+    fi
+done

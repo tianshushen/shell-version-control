@@ -1,0 +1,129 @@
+#!/usr/bin/env dash
+#
+# svc-merge
+# Author: Shen, Tianshu
+#
+# Merge branch
+
+if ! test -d .svc; then
+    echo "$0: error: svc repository directory .svc not found" >&2
+    exit 1
+fi
+
+# check if two files have same content
+# a missing file only equals another missing file
+same_file() {
+    if test -f "$1"; then
+        test -f "$2" && cmp -s "$1" "$2"
+    else
+        ! test -f "$2"
+    fi
+}
+
+if test "$#" -eq 1; then
+    echo "$0: error: empty commit message" >&2
+    exit 1
+fi
+
+if test "$#" -ne 3; then
+    echo "usage: $0 <branch|commit> -m message" >&2
+    exit 1
+fi
+
+if echo "$1" | grep -q '^-.*$' || ! test "$2" = '-m' || echo "$3" | grep -q '^-.*$'; then
+    echo "usage: $0 <branch|commit> -m message" >&2
+    exit 1
+fi
+
+msg="$3"
+
+# branch name is never entirely numeric so an all digits target means a commit number
+if echo "$1" | grep -q '^[0-9]*$'; then
+    read i < .svc/index
+    if test "$1" -ge "$i"; then
+        echo "$0: error: unknown commit '$1'" >&2
+        exit 1
+    else
+        targ_head="$1"
+    fi
+else
+    if ! test -f ".svc/branch/$1"; then
+        echo "$0: error: unknown branch '$1'" >&2
+        exit 1
+    else
+        read targ_head < ".svc/branch/$1"  # commit of branch
+    fi
+fi
+
+read b < .svc/current
+read curr_head < ".svc/branch/$b"
+
+# find the latest common ancestor with U
+ance_head=$(sort -n ".svc/repo/${curr_head}.hist" ".svc/repo/${targ_head}.hist" | uniq -d | tail -n 1)
+
+# skip if ancestor==current head
+if test "${ance_head}" -eq "${curr_head}"; then
+    echo "${targ_head}" > ".svc/branch/$b"
+    rm -f .svc/stag/*
+    for f in $(ls ".svc/repo/${targ_head}" 2>/dev/null); do
+        cp ".svc/repo/${targ_head}/$f" "$f"
+        cp ".svc/repo/${targ_head}/$f" ".svc/stag/$f"
+    done
+    echo 'Fast-forward: no commit created'
+    exit 0
+fi
+
+all_file=$(
+    {
+        ls ".svc/repo/${curr_head}" 2>/dev/null
+        ls ".svc/repo/${targ_head}" 2>/dev/null
+        ls ".svc/repo/${ance_head}" 2>/dev/null
+    } | sort -u
+)
+
+# conflict when changed since the ancestor on both sides and not identically
+conflict=''
+for f in ${all_file}; do
+    if ! same_file ".svc/repo/${curr_head}/$f" ".svc/repo/${ance_head}/$f" &&
+        ! same_file ".svc/repo/${targ_head}/$f" ".svc/repo/${ance_head}/$f" &&
+        ! same_file ".svc/repo/${curr_head}/$f" ".svc/repo/${targ_head}/$f"; then
+        conflict="${conflict} $f"
+    fi
+done
+
+if test -n "${conflict}"; then
+    echo "$0: error: These files can not be merged:" >&2
+    printf '%s\n' ${conflict} | sort >&2
+    exit 1
+fi
+
+# no conflict build the merge commit file by file
+read i < .svc/index
+mkdir ".svc/repo/$i"
+for f in ${all_file}; do
+    if same_file ".svc/repo/${targ_head}/$f" ".svc/repo/${ance_head}/$f"; then  # target side unchanged
+        src=".svc/repo/${curr_head}/$f"  # keep curr
+    else  # target side changed
+        src=".svc/repo/${targ_head}/$f"  # use targ
+    fi
+    test -f "${src}" && cp "${src}" ".svc/repo/$i/$f"
+done
+
+# make work directory and index match merge result
+rm -f .svc/stag/*
+for f in ${all_file}; do
+    if test -f ".svc/repo/$i/$f"; then
+        cp ".svc/repo/$i/$f" "$f"
+        cp ".svc/repo/$i/$f" ".svc/stag/$f"
+    else
+        rm -f "$f"
+    fi
+done
+
+echo "$msg" > ".svc/repo/$i.msg"
+sort -n ".svc/repo/${curr_head}.hist" ".svc/repo/${targ_head}.hist" | uniq > ".svc/repo/$i.hist"
+echo "$i" >> ".svc/repo/$i.hist"
+
+echo "$i" > ".svc/branch/$b"
+echo "$((i+1))" > .svc/index
+echo "Committed as commit $i"

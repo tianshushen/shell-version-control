@@ -1,0 +1,84 @@
+#!/usr/bin/env dash
+#
+# svc-rm
+# Author: Shen, Tianshu
+#
+# Remove file from index
+# Remove file from current directory
+
+if ! test -d .svc; then
+    echo "$0: error: svc repository directory .svc not found" >&2
+    exit 1
+fi
+
+mode_force='False'
+mode_cached='False'
+
+if test "$1" = '--force'; then
+    mode_force='True'
+    shift
+fi
+
+if test "$1" = '--cached'; then
+    mode_cached='True'
+    shift
+fi
+
+if test "$#" -eq 0; then
+    echo "usage: $0 [--force] [--cached] <filenames>" >&2
+    exit 1
+fi
+
+for f in "$@"; do
+    if echo "$f" | grep -Eq '^-.*$'; then
+        echo "usage: $0 [--force] [--cached] <filenames>" >&2
+        exit 1
+    elif ! echo "$f" | grep -Eq '^[a-zA-Z0-9][a-zA-Z0-9._-]*$'; then
+        echo "$0: error: invalid filename '$f'" >&2
+        exit 1
+    elif ! test -f ".svc/stag/$f"; then
+        echo "$0: error: '$f' is not in the svc repository" >&2
+        exit 1
+    fi
+done
+
+read b < .svc/current
+read p < ".svc/branch/$b"
+
+# default reject delete will cause lose work
+for f in "$@"; do
+    if test "${mode_force}" = 'False'; then  # pass if in force mode delete anyway
+        if diff ".svc/stag/$f" "$f" > /dev/null 2>&1; then  # bool: index =||!= working and index =||!= repo
+            stag_eq_work='True'
+        else
+            stag_eq_work='False'
+        fi
+        if diff ".svc/stag/$f" ".svc/repo/$p/$f" > /dev/null 2>&1; then
+            stag_eq_repo='True'
+        else
+            stag_eq_repo='False'
+        fi
+
+        if test "${stag_eq_work}" = 'False' && test "${stag_eq_repo}" = 'False'; then
+            echo "$0: error: '$f' in index is different to both the working file and the repository" >&2
+            exit 1
+        fi
+
+        if test "${mode_cached}" = 'False'; then
+            if test "${stag_eq_work}" = 'True' && test "${stag_eq_repo}" = 'False'; then
+                echo "$0: error: '$f' has staged changes in the index" >&2
+                exit 1
+            elif test "${stag_eq_work}" = 'False' && test "${stag_eq_repo}" = 'True'; then
+                echo "$0: error: '$f' in the repository is different to the working file" >&2
+                exit 1
+            fi
+        fi
+    fi
+done
+
+for f in "$@"; do
+    if test "${mode_cached}" = 'False'; then  # change index only if in cached mode
+        rm -f "$f"
+    fi
+    rm -f ".svc/stag/$f"
+done

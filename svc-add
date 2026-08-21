@@ -1,0 +1,34 @@
+#!/usr/bin/env dash
+#
+# svc-add
+# Author: Shen, Tianshu
+#
+# Add the contents of file to the index
+# This is the step before add to repository
+
+if ! test -d .svc; then
+    echo "$0: error: svc repository directory .svc not found" >&2
+    exit 1
+fi
+
+nf='^[a-zA-Z0-9][a-zA-Z0-9._-]*$'  # file name normal form
+
+if test "$#" -eq 0; then
+    echo "usage: $0 <filenames>" >&2
+    exit 1
+fi
+
+for f in "$@"; do
+    if ! echo "$f" | grep -qE "${nf}"; then  # check if filename legal.
+        echo "$0: error: invalid filename '$f'" >&2
+        exit 1
+    elif test -f "$f"; then  # check if file exist and is a file
+        cp "$f" ".svc/stag/$f"
+    elif test -f ".svc/stag/$f"; then
+        # svc-add a deleted file in work area, record this to index
+        rm -f ".svc/stag/$f"
+    else
+        echo "$0: error: can not open '$f'" >&2
+        exit 1
+    fi
+done

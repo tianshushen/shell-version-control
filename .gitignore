@@ -1,0 +1,12 @@
+# Test scripts are not published
+test-lib.sh
+testall.sh
+test?.sh
+
+# Local helper for switching shebangs between macOS and the university lab
+imtianshu.sh
+
+# OS / IDE
+.DS_Store
+.idea/
+.vscode/

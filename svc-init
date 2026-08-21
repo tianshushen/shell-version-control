@@ -1,0 +1,41 @@
+#!/usr/bin/env dash
+#
+# svc-init
+# Author: Shen, Tianshu
+#
+# Create a SVC repository
+# If exception occurs, raise error and exit
+
+if test "$#" -ne 0; then
+    echo "usage: $0"
+    exit 1
+fi
+
+if test -d .svc; then
+    echo "$0: error: .svc already exists" >&2
+    exit 1
+fi
+
+#   repository structure overview
+#   .svc/stag/      file in stag area ("index area")
+#   .svc/repo/N/    file of commit N
+#   .svc/repo/N.msg msg of commit N
+#   .svc/repo/N.hist    all index num of ancestor of commit N with N included
+#   .svc/branch/INDEX   index number of a commit default -1
+#   .svc/current    current branch name
+#   .svc/index      next commit num
+mkdir .svc
+mkdir .svc/stag  # stag area ("index area")
+mkdir .svc/repo  # repository
+mkdir .svc/branch
+
+if test "$?" -ne 0; then
+    echo "$0: error: could not create svc repository" >&2
+    exit 1
+fi
+
+echo '-1' > .svc/branch/master
+echo 'master' > .svc/current
+echo '0' > .svc/index
+
+echo 'Initialized empty svc repository in .svc'

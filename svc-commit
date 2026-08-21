@@ -1,0 +1,70 @@
+#!/usr/bin/env dash
+#
+# svc-commit
+# Author: Shen, Tianshu
+#
+# Saves copy from staging area to repository
+# Commit index number sequentially
+
+if ! test -d .svc; then
+    echo "$0: error: svc repository directory .svc not found" >&2
+    exit 1
+fi
+
+mode_commit='False'
+
+if test "$#" -eq 2 && test "$1" = '-m'; then
+    msg="$2"
+elif test "$#" -eq 3 && test "$2" = '-m' && test "$1" = '-a'; then
+    mode_commit='True'
+    msg="$3"
+else
+    echo "usage: $0 [-a] -m commit-message" >&2
+    exit 1  
+fi
+
+read i < .svc/index  # int
+read b < .svc/current  # str current branch name
+read head < ".svc/branch/$b"  # int commit number of current branch head
+
+# for -a add file have commit before
+if test "${mode_commit}" = 'True'; then
+    for recfil in .svc/stag/*; do  # recfil: recorded files
+        if test -f "${recfil}"; then
+            filnam=$(basename "${recfil}")
+            if test -f "${filnam}"; then
+                cp "${filnam}" ".svc/stag/${filnam}"
+            fi
+        fi
+    done
+fi
+
+# nothing to commit if index same as current branch head
+if test "${head}" -ge 0; then
+    if diff -r .svc/stag ".svc/repo/${head}" > /dev/null 2>&1; then
+        echo 'nothing to commit'
+        exit 0
+    fi
+else  # no commit yet: nothing to commit if index empty
+    if test -z "$(ls .svc/stag 2>/dev/null)"; then
+        echo 'nothing to commit'
+        exit 0
+    fi
+fi
+
+# write commit
+mkdir ".svc/repo/$i"
+cp .svc/stag/* ".svc/repo/$i/" 2>/dev/null  # index may be empty (committing a deletion)
+echo "$msg" > ".svc/repo/$i.msg"
+
+# hist: every ancestor commit number of this commit, one per line, self included
+if test "${head}" -ge 0; then
+    cp ".svc/repo/${head}.hist" ".svc/repo/$i.hist"
+else
+    touch ".svc/repo/$i.hist"
+fi
+echo "$i" >> ".svc/repo/$i.hist"
+
+echo "$i" > ".svc/branch/$b"
+echo "$((i+1))" > .svc/index
+echo "Committed as commit $i"

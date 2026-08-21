@@ -1,0 +1,82 @@
+#!/usr/bin/env dash
+#
+# svc-checkout
+# Author: Shen, Tianshu
+#
+# Switch branch
+
+if ! test -d .svc; then
+    echo "$0: error: svc repository directory .svc not found" >&2
+    exit 1
+fi
+
+# check if two files have same content
+# a missing file only equals another missing file
+same_file() {
+    if test -f "$1"; then
+        test -f "$2" && cmp -s "$1" "$2"
+    else
+        ! test -f "$2"
+    fi
+}
+
+if test "$#" -ne 1; then
+    echo "usage: $0 <branch>" >&2
+    exit 1
+fi
+
+if ! test -f ".svc/branch/$1"; then
+    echo "$0: error: unknown branch '$1'" >&2
+    exit 1
+fi
+
+read c < .svc/current
+
+if test "$1" = "$c"; then
+    echo "Already on '$1'"
+    exit 0
+fi
+
+read cur_head < ".svc/branch/$c"
+read targ_head < ".svc/branch/$1"
+
+files=$(
+    { test "$cur_head" -ge 0 && ls ".svc/repo/$cur_head" 2>/dev/null
+      test "$targ_head" -ge 0 && ls ".svc/repo/$targ_head" 2>/dev/null; } | sort -u
+)
+
+# only when (checkout will modify the file) && (modify in work area && != that of target) -> conflict
+conflict=""
+
+# first loop detect only do no modify
+for f in $files; do
+    cf=".svc/repo/$cur_head/$f"; tf=".svc/repo/$targ_head/$f"
+    if ! same_file "${cf}" "${tf}"; then
+        if ! same_file "$f" "${cf}" && ! same_file "$f" "${tf}"; then
+            conflict="${conflict} $f"
+        fi
+    fi
+done
+if test -n "${conflict}"; then
+    echo "$0: error: Your changes to the following files would be overwritten by checkout:" >&2
+    printf '%s\n' $conflict | sort >&2
+    exit 1
+fi
+
+# second loop do modify
+for f in ${files}; do
+    cf=".svc/repo/$cur_head/$f"
+    tf=".svc/repo/$targ_head/$f"
+    if ! same_file "${cf}" "${tf}"; then
+        if test -f "$tf"; then
+            cp "${tf}" "$f"
+            cp "${tf}" ".svc/stag/$f"
+        else
+            rm -f "$f"
+            rm -f ".svc/stag/$f"
+        fi
+    fi
+done
+
+echo "$1" > .svc/current
+echo "Switched to branch '$1'"

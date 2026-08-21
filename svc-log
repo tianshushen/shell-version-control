@@ -1,0 +1,26 @@
+#!/usr/bin/env dash
+#
+# svc-log
+# Author: Shen, Tianshu
+#
+# Prints every commit for repository
+# With commit number and message
+
+if ! test -d .svc; then
+    echo "$0: error: svc repository directory .svc not found" >&2
+    exit 1
+fi
+
+if test "$#" -ne 0; then
+    echo "usage: $0" >&2
+    exit 1
+fi
+
+read b < .svc/current
+read head < ".svc/branch/$b"
+
+if test "${head}" -ge 0; then
+    for c in $(sort -rn ".svc/repo/${head}.hist"); do
+        echo "$c $(cat ".svc/repo/$c.msg")"
+    done
+fi
